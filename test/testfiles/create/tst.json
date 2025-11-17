@@ -1,0 +1,12 @@
+{
+  "network": {
+    "name": "example",
+    "id": "abc123",
+    "driver": "bridge",
+    "dns_enabled": false,
+    "internal": false,
+    "ipv6_enabled": false
+  },
+  "used_interfaces": [],
+  "used_subnets": []
+}

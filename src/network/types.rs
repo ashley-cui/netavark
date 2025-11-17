@@ -58,7 +58,15 @@ pub struct Network {
     #[serde(rename = "network_dns_servers")]
     pub network_dns_servers: Option<Vec<IpAddr>>,
 }
-
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct NetworkCreate{
+    #[serde(rename = "network")]
+    pub network: Network,
+    #[serde(rename = "used_interfaces")]
+    pub used_interfaces: Vec<String>,
+    #[serde(rename = "used_subnets")]
+    pub used_subnets: Vec<String>,
+}
 /// NetworkOptions for a given container.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct NetworkOptions {
