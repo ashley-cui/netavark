@@ -1,5 +1,6 @@
 pub mod types;
 pub mod validation;
+pub mod create_config;
 use std::{
     ffi::OsString,
     fs::File,
@@ -20,7 +21,6 @@ pub mod netlink;
 pub mod plugin;
 pub mod sysctl;
 pub mod vlan;
-pub mod create;
 
 impl types::NetworkOptions {
     pub fn load(path: Option<OsString>) -> NetavarkResult<types::NetworkOptions> {

@@ -59,13 +59,33 @@ pub struct Network {
     pub network_dns_servers: Option<Vec<IpAddr>>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct NetworkCreate{
+pub struct NetworkCreateConfig{
     #[serde(rename = "network")]
     pub network: Network,
-    #[serde(rename = "used_interfaces")]
-    pub used_interfaces: Vec<String>,
-    #[serde(rename = "used_subnets")]
-    pub used_subnets: Vec<String>,
+    #[serde(rename = "used")]
+    pub used: Used,
+    #[serde(rename = "default")]
+    pub default: bool,
+    #[serde(rename = "subnet_pools")]
+    pub subnet_pools: Vec<SubnetPool>
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SubnetPool{
+    #[serde(rename = "base")]
+    pub base: IpNet,
+    #[serde(rename = "size")]
+    pub size: u32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Used{
+    #[serde(rename = "interfaces")]
+    pub interfaces: Vec<String>,
+    #[serde(rename = "networks")]
+    pub networks: HashMap<String, String>,
+    #[serde(rename = "subnets")]
+    pub subnets: Vec<IpNet>,
 }
 /// NetworkOptions for a given container.
 #[derive(Clone, Debug, Serialize, Deserialize)]

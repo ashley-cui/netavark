@@ -32,3 +32,5 @@ pub const NO_CONTAINER_INTERFACE_ERROR: &str = "no container interface name give
 
 /// make sure this is the same rootful default as used in podman.
 pub const DEFAULT_CONFIG_DIR: &str = "/run/containers/networks";
+
+pub const MAX_INTERFACE_NAME_LEN: usize = 15;

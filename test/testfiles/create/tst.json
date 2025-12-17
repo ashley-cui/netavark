@@ -1,6 +1,6 @@
 {
   "network": {
-    "name": "example",
+    "name": "asdf",
     "id": "abc123",
     "driver": "bridge",
     "dns_enabled": false,
@@ -8,5 +8,7 @@
     "ipv6_enabled": false
   },
   "used_interfaces": [],
-  "used_subnets": []
+  "existing_networks": [],
+  "used_subnets": [],
+  "default": false
 }
