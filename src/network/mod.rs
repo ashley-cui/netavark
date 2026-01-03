@@ -1,5 +1,6 @@
 pub mod types;
 pub mod validation;
+pub mod create_config;
 use std::{
     ffi::OsString,
     fs::File,

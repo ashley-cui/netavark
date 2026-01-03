@@ -57,7 +57,6 @@ impl NetworkDriver for PluginDriver<'_> {
         ))?;
         Ok(())
     }
-
     fn network_name(&self) -> String {
         self.info.network.name.clone()
     }

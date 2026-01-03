@@ -3,10 +3,18 @@
 use ipnet::IpNet;
 use std::collections::HashMap;
 use std::net::IpAddr;
+use chrono::{DateTime, Utc};
+use serde_with::skip_serializing_none;
+
 
 // Network describes the Network attributes.
+#[skip_serializing_none]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Network {
+    // Creation time of the Network.
+    #[serde(rename = "created")]
+    pub created: Option<DateTime<Utc>>,
+
     /// Set up dns for this network
     #[serde(rename = "dns_enabled")]
     pub dns_enabled: bool,
@@ -57,8 +65,47 @@ pub struct Network {
     /// Network DNS servers for aardvark-dns.
     #[serde(rename = "network_dns_servers")]
     pub network_dns_servers: Option<Vec<IpAddr>>,
+
+    #[serde(rename = "labels")]
+    pub labels: Option<HashMap<String, String>>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct NetworkCreateConfig{
+    #[serde(rename = "network")]
+    pub network: Network,
+    #[serde(rename = "used")]
+    pub used: Used,
+    #[serde(rename = "options")]
+    pub create_opts: CreateOpts,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CreateOpts{
+    #[serde(rename = "subnet_pools")]
+    pub subnet_pools: Vec<SubnetPool>,
+    #[serde(rename = "default_interface_name")]
+    pub default_interface_name: Option<String>,
+    #[serde(rename = "check_used_subnets")]
+    pub check_used_subnets: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SubnetPool{
+    #[serde(rename = "base")]
+    pub base: IpNet,
+    #[serde(rename = "size")]
+    pub size: u32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Used{
+    #[serde(rename = "interfaces")]
+    pub interfaces: Vec<String>,
+    #[serde(rename = "names")]
+    pub names: HashMap<String, String>,
+    #[serde(rename = "subnets")]
+    pub subnets: Vec<IpNet>,
+}
 /// NetworkOptions for a given container.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct NetworkOptions {
@@ -206,6 +253,7 @@ pub struct NetAddress {
 }
 
 /// Subnet for a network.
+#[skip_serializing_none]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Subnet {
     /// Gateway IP for this Network.

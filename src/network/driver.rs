@@ -45,7 +45,7 @@ pub trait NetworkDriver {
         &self,
         netlink_sockets: (&mut netlink::Socket, &mut netlink::Socket),
     ) -> NetavarkResult<()>;
-
+    
     /// return the network name
     fn network_name(&self) -> String;
 }

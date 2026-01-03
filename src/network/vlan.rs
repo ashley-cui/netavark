@@ -232,6 +232,7 @@ impl driver::NetworkDriver for Vlan<'_> {
         ))?;
         Ok(())
     }
+
 }
 
 fn setup(
