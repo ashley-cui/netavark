@@ -2,11 +2,17 @@ use crate::network::constants;
 use crate::network::create_config::subnet::{
     get_free_ipv4_network_subnet, get_free_ipv6_network_subnet,
 };
+use crate::network::core_utils::CoreUtils;
+use crate::network::netlink::Socket;
+use crate::network::netlink_route::NetlinkRoute;
 use crate::network::types::{CreateOpts, Network, Used};
+use crate::network::vlan::parse_vlan_opts;
+use crate::network::bridge::parse_bridge_opts;
 use crate::{
     error::{JsonError, NetavarkError, NetavarkResult},
     wrap,
 };
+use netlink_packet_route::link::LinkAttribute;
 use pnet::datalink;
 use regex::Regex;
 use std::collections::HashMap;
@@ -32,49 +38,11 @@ pub fn setup_bridge_options(network: &mut Network) -> NetavarkResult<(bool, bool
     let mut check_used = true;
     let mut check_bridge_conflict = true;
 
-    // Collect keys to avoid borrowing issues when modifying the map
-    let keys: Vec<String> = network_opts.keys().cloned().collect();
-
-    for key in keys {
-        let value = network_opts.get(&key).expect("key should exist");
-        match key.as_str() {
-            constants::OPTION_MTU => {
-                parse_mtu(value)?;
-            }
-            constants::OPTION_VLAN => {
-                parse_vlan(value)?;
-                check_used = false;
-                check_bridge_conflict = false;
-            }
-            constants::OPTION_ISOLATE => {
-                let iso = parse_isolate(value)?;
-                network_opts.insert(key, iso);
-            }
-            constants::OPTION_METRIC => {
-                parse_metric(value)?;
-            }
-            constants::OPTION_NO_DEFAULT_ROUTE => {
-                let ndr = parse_no_default_route(value)?;
-                network_opts.insert(key, ndr);
-            }
-            constants::OPTION_VRF => {
-                if value.is_empty() {
-                    return Err(NetavarkError::msg(format!("invalid vrf name: {}", value)));
-                }
-            }
-            constants::OPTION_MODE => {
-                check_used = false;
-                check_bridge_conflict = false;
-            }
-            _ => {
-                return Err(NetavarkError::msg(format!(
-                    "unsupported bridge network option {}",
-                    key
-                )))
-            }
-        }
+    let bridge_opts = parse_bridge_opts(&network.options, true)?;
+    if bridge_opts.vlan.is_some() || (bridge_opts.mode.is_some() && bridge_opts.mode.unwrap() != "managed") {
+        check_used = false;
+        check_bridge_conflict = false;
     }
-
     Ok((check_used, check_bridge_conflict))
 }
 
@@ -170,15 +138,13 @@ pub fn create_bridge(
 
 pub fn create_ipvlan_macvlan(network: &mut Network) -> NetavarkResult<()> {
     if let Some(interface) = &network.network_interface {
-        let interface_names: Vec<String> = datalink::interfaces()
-            .into_iter()
-            .map(|iface| iface.name)
-            .collect();
-        if !interface_names.contains(interface) {
-            return Err(NetavarkError::msg(format!(
-                "parent interface {} does not exist",
-                interface
-            )));
+        if let Some(interface_names) = get_link_names() {
+            if !interface_names.contains(interface) {
+                return Err(NetavarkError::msg(format!(
+                    "parent interface {} does not exist",
+                    interface
+                )));
+            }
         }
     }
 
@@ -235,63 +201,20 @@ pub fn create_ipvlan_macvlan(network: &mut Network) -> NetavarkResult<()> {
     }
 
     // validate the given options, we do not need them but just check to make sure they are valid
-    if let Some(options) = &network.options {
-        let options_clone = options.clone();
-        for (key, value) in options_clone {
-            match key.as_str() {
-                constants::OPTION_MODE => {
-                    if is_macvlan {
-                        if !constants::VALID_MACVLAN_MODES.contains(&value.as_str()) {
-                            return Err(NetavarkError::msg(format!(
-                                "unknown macvlan mode {:?}",
-                                value
-                            )));
-                        }
-                    } else if !constants::VALID_IPVLAN_MODES.contains(&value.as_str()) {
-                        return Err(NetavarkError::msg(format!(
-                            "unknown ipvlan mode {:?}",
-                            value
-                        )));
-                    }
-                }
-                constants::OPTION_METRIC => {
-                    value.parse::<u32>().map_err(|e| {
-                        NetavarkError::msg(format!("Failed to parse metric: {}", e))
-                    })?;
-                }
-                constants::OPTION_MTU => {
-                    parse_mtu(&value)?;
-                }
-                constants::OPTION_NO_DEFAULT_ROUTE => {
-                    let val = parse_no_default_route(&value)?;
-                    // rust only support "true" or "false" while go can parse 1 and 0 as well so we need to change it
-                    if let Some(opts) = &mut network.options {
-                        opts.insert(key.clone(), val.to_string());
-                    }
-                }
-                constants::OPTION_BCLIM => {
-                    if is_macvlan {
-                        value.parse::<i32>().map_err(|e| {
-                            NetavarkError::msg(format!("failed to parse {:?} option: {}", key, e))
-                        })?;
-                        // do not fallthrough for macvlan
-                    } else {
-                        // bclim is only valid for macvlan not ipvlan so fallthrough to error case
-                        return Err(NetavarkError::msg(format!(
-                            "unsupported {} network option {}",
-                            driver, key
-                        )));
-                    }
-                }
-                _ => {
-                    return Err(NetavarkError::msg(format!(
-                        "unsupported {} network option {}",
-                        driver, key
-                    )));
-                }
+    let vlan_opts = parse_vlan_opts(&network.options, true)?;
+    if vlan_opts.mode.is_some() {
+        if is_macvlan {
+            CoreUtils::get_macvlan_mode_from_string(vlan_opts.mode.as_deref())?;
+        } else {
+            CoreUtils::get_ipvlan_mode_from_string(vlan_opts.mode.as_deref())?;
+        }
+        if vlan_opts.bclim.is_some() {
+            if !is_macvlan {
+                return Err(NetavarkError::msg(format!("bclim is not supported with ipvlan")));
             }
         }
     }
+
     Ok(())
 }
 
@@ -319,62 +242,6 @@ fn get_free_device_name(
     Err(NetavarkError::msg(
         "Could not find a free device name after 1,000,000 attempts",
     ))
-}
-
-fn parse_mtu(mtu: &str) -> NetavarkResult<u32> {
-    if mtu.is_empty() {
-        return Ok(0);
-    }
-    mtu.parse::<u32>()
-        .map_err(|e| NetavarkError::msg(format!("Failed to parse mtu: {}", e)))
-}
-
-fn parse_vlan(vlan: &str) -> NetavarkResult<u32> {
-    if vlan.is_empty() {
-        return Ok(0);
-    }
-    let n = vlan
-        .parse::<u32>()
-        .map_err(|e| NetavarkError::msg(format!("Failed to parse: {}", e)))?;
-    if n > 4094 {
-        return Err(NetavarkError::msg(format!(
-            "vlan id {} must be between 0 and 4094",
-            n
-        )));
-    }
-    Ok(n)
-}
-
-fn parse_isolate(isolate: &str) -> NetavarkResult<String> {
-    match isolate {
-        "" => Ok(String::from("false")),
-        "1" => Ok(String::from("true")),
-        "0" => Ok(String::from("false")),
-        "strict" | "true" | "false" => Ok(isolate.to_string()),
-        _ => Err(NetavarkError::msg(format!(
-            "failed to parse isolate option {}",
-            isolate
-        ))),
-    }
-}
-
-fn parse_no_default_route(ndr: &str) -> NetavarkResult<String> {
-    match ndr {
-        "" => Ok(String::from("false")),
-        "1" => Ok(String::from("true")),
-        "0" => Ok(String::from("false")),
-        "strict" | "true" | "false" => Ok(ndr.to_string()),
-        _ => Err(NetavarkError::msg(format!(
-            "invalid no_default_route value {}",
-            ndr
-        ))),
-    }
-}
-
-fn parse_metric(metric: &str) -> NetavarkResult<u32> {
-    metric
-        .parse::<u32>()
-        .map_err(|e| NetavarkError::msg(format!("Failed to parse metric: {}", e)))
 }
 
 pub fn exec_plugin_driver(
@@ -458,4 +325,23 @@ pub fn exec_plugin_driver(
             plugin_path.file_name().unwrap_or_default()
         )))
     }
+}
+
+
+fn get_link_names() -> Option<Vec<String>> {
+    let mut sock = Socket::<NetlinkRoute>::new().ok()?;
+    let links = sock.dump_links(&mut vec![]).ok()?;
+
+    let mut names = Vec::with_capacity(links.len());
+
+    for link in links {
+        for attribute in link.attributes.into_iter() {
+            if let LinkAttribute::IfName(name) = attribute {
+                names.push(name);
+                break;
+            }
+        }
+    }
+
+    Some(names)
 }
